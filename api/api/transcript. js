@@ -1,0 +1,69 @@
+const https = require('https');
+
+function setCors(res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+}
+
+function fetchData(url, options = {}) {
+  return new Promise((resolve, reject) => {
+    const req = https.request(url, {
+      method: options.method || 'GET',
+      headers: options.headers || {}
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try { resolve({ ok: res.statusCode < 400, data: JSON.parse(data) }); }
+        catch { resolve({ ok: false, data: {} }); }
+      });
+    });
+    req.on('error', reject);
+    if (options.body) req.write(options.body);
+    req.end();
+  });
+}
+
+module.exports = async (req, res) => {
+  setCors(res);
+  if (req.method === 'OPTIONS') return res.status(200).end();
+
+  let body = '';
+  await new Promise(resolve => { req.on('data', c => body += c); req.on('end', resolve); });
+
+  let parsed;
+  try { parsed = JSON.parse(body); } catch { parsed = {}; }
+
+  const { transcript_id, assemblyai_key } = parsed;
+  const apiKey = assemblyai_key || process.env.ASSEMBLYAI_KEY;
+
+  if (!transcript_id) return res.status(400).json({ error: 'Missing transcript_id' });
+  if (!apiKey) return res.status(400).json({ error: 'Missing API key' });
+
+  try {
+    const result = await fetchData(
+      `https://api.assemblyai.com/v2/transcript/${transcript_id}`,
+      { headers: { 'Authorization': apiKey } }
+    );
+
+    const t = result.data;
+
+    return res.status(200).json({
+      status: t.status,
+      transcript_id: t.id,
+      ...(t.status === 'completed' ? {
+        text: t.text,
+        audio_duration: t.audio_duration,
+        language_code: t.language_code,
+        chapters: t.chapters || [],
+        highlights: t.auto_highlights_result?.results || [],
+        sentiments: t.sentiment_analysis_results || []
+      } : {}),
+      ...(t.status === 'error' ? { error: t.error } : {})
+    });
+
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
