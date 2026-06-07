@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "functions": {
+    "api/youtube.js": { "memory": 1024, "maxDuration": 300 },
+    "api/transcript.js": { "memory": 256, "maxDuration": 30 },
+    "api/checkout.js": { "memory": 256, "maxDuration": 30 },
+    "api/webhook.js": { "memory": 256, "maxDuration": 30 }
+  }
+}
